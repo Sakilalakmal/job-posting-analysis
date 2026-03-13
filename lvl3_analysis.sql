@@ -166,14 +166,14 @@ with global_average AS (
 	from gold.job_postings_fact 
 	)
 	select 
-		comp.company_id,
-		comp.name,
-		AVG(fact.salary_year_avg) AS company_year_avg,
-		count(distinct job_id) AS job_count
+			comp.company_id,
+			comp.name,
+			AVG(fact.salary_year_avg) AS company_year_avg,
+			count(distinct job_id) AS job_count
 		from gold.job_postings_fact AS fact
-		LEFT JOIN gold.company_dim AS comp
-		ON fact.company_id = comp.company_id
-		WHERE comp.name IS NOT NULL
-		group by comp.company_id , comp.name
-		HAVING AVG(fact.salary_year_avg) > (select global_avg from global_average)
-		ORDER BY AVG(fact.salary_year_avg) DESC
+			LEFT JOIN gold.company_dim AS comp
+			ON fact.company_id = comp.company_id
+			WHERE comp.name IS NOT NULL AND fact.salary_year_avg IS NOT NULL
+			group by comp.company_id , comp.name
+			HAVING count(distinct job_id) >= 20 AND AVG(fact.salary_year_avg) > (select global_avg from global_average)
+			ORDER BY AVG(fact.salary_year_avg) DESC
