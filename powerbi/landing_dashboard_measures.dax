@@ -1,0 +1,210 @@
+// Create this calculated table first in Power BI.
+Landing Dashboard Measures =
+DATATABLE (
+    "Measure Group", STRING,
+    {
+        { "Landing Dashboard" }
+    }
+)
+
+// Add the measures below into the Landing Dashboard Measures table.
+
+// Core volume KPIs
+Total Job Postings =
+DISTINCTCOUNT ( 'job_postings_fact'[job_id] )
+
+Hiring Companies =
+CALCULATE (
+    DISTINCTCOUNT ( 'job_postings_fact'[company_id] ),
+    NOT ISBLANK ( 'job_postings_fact'[company_id] )
+)
+
+Hiring Countries =
+CALCULATE (
+    DISTINCTCOUNT ( 'job_postings_fact'[job_country] ),
+    NOT ISBLANK ( 'job_postings_fact'[job_country] )
+)
+
+Job Roles =
+CALCULATE (
+    DISTINCTCOUNT ( 'job_postings_fact'[job_title_short] ),
+    NOT ISBLANK ( 'job_postings_fact'[job_title_short] )
+)
+
+// Salary KPIs
+Jobs With Salary =
+CALCULATE (
+    [Total Job Postings],
+    'job_postings_fact'[salary_year_avg] > 0
+)
+
+Salary Coverage % =
+DIVIDE ( [Jobs With Salary], [Total Job Postings] )
+
+Average Salary =
+AVERAGEX (
+    FILTER ( 'job_postings_fact', 'job_postings_fact'[salary_year_avg] > 0 ),
+    'job_postings_fact'[salary_year_avg]
+)
+
+Median Salary =
+MEDIANX (
+    FILTER ( 'job_postings_fact', 'job_postings_fact'[salary_year_avg] > 0 ),
+    'job_postings_fact'[salary_year_avg]
+)
+
+// Remote work KPIs
+Remote Jobs =
+CALCULATE (
+    [Total Job Postings],
+    'job_postings_fact'[job_work_from_home] = "TRUE"
+)
+
+Remote Share % =
+DIVIDE ( [Remote Jobs], [Total Job Postings] )
+
+Remote Avg Salary =
+AVERAGEX (
+    FILTER (
+        'job_postings_fact',
+        'job_postings_fact'[salary_year_avg] > 0
+            && 'job_postings_fact'[job_work_from_home] = "TRUE"
+    ),
+    'job_postings_fact'[salary_year_avg]
+)
+
+Onsite Avg Salary =
+AVERAGEX (
+    FILTER (
+        'job_postings_fact',
+        'job_postings_fact'[salary_year_avg] > 0
+            && 'job_postings_fact'[job_work_from_home] = "FALSE"
+    ),
+    'job_postings_fact'[salary_year_avg]
+)
+
+Remote Salary Premium =
+[Remote Avg Salary] - [Onsite Avg Salary]
+
+// Candidate-friendly KPIs
+No Degree Jobs =
+CALCULATE (
+    [Total Job Postings],
+    'job_postings_fact'[job_no_degree_mention] = "TRUE"
+)
+
+No Degree Share % =
+DIVIDE ( [No Degree Jobs], [Total Job Postings] )
+
+Health Insurance Jobs =
+CALCULATE (
+    [Total Job Postings],
+    'job_postings_fact'[job_health_insurance] = "TRUE"
+)
+
+Health Insurance Share % =
+DIVIDE ( [Health Insurance Jobs], [Total Job Postings] )
+
+// Freshness KPIs
+Latest Posted Date =
+MAXX (
+    FILTER (
+        'job_postings_fact',
+        NOT ISBLANK ( 'job_postings_fact'[job_posted_date] )
+    ),
+    IFERROR ( DATEVALUE ( 'job_postings_fact'[job_posted_date] ), BLANK () )
+)
+
+Earliest Posted Date =
+MINX (
+    FILTER (
+        'job_postings_fact',
+        NOT ISBLANK ( 'job_postings_fact'[job_posted_date] )
+    ),
+    IFERROR ( DATEVALUE ( 'job_postings_fact'[job_posted_date] ), BLANK () )
+)
+
+// Headline text KPIs
+Top Hiring Role =
+VAR _roleTable =
+    TOPN (
+        1,
+        SUMMARIZE (
+            FILTER (
+                'job_postings_fact',
+                NOT ISBLANK ( 'job_postings_fact'[job_title_short] )
+            ),
+            'job_postings_fact'[job_title_short],
+            "Job Count", DISTINCTCOUNT ( 'job_postings_fact'[job_id] )
+        ),
+        [Job Count], DESC,
+        'job_postings_fact'[job_title_short], ASC
+    )
+RETURN
+    CONCATENATEX ( _roleTable, 'job_postings_fact'[job_title_short], ", " )
+
+Top Hiring Country =
+VAR _countryTable =
+    TOPN (
+        1,
+        SUMMARIZE (
+            FILTER (
+                'job_postings_fact',
+                NOT ISBLANK ( 'job_postings_fact'[job_country] )
+            ),
+            'job_postings_fact'[job_country],
+            "Job Count", DISTINCTCOUNT ( 'job_postings_fact'[job_id] )
+        ),
+        [Job Count], DESC,
+        'job_postings_fact'[job_country], ASC
+    )
+RETURN
+    CONCATENATEX ( _countryTable, 'job_postings_fact'[job_country], ", " )
+
+Top Paying Role =
+VAR _roleSalaryTable =
+    TOPN (
+        1,
+        SUMMARIZE (
+            FILTER (
+                'job_postings_fact',
+                'job_postings_fact'[salary_year_avg] > 0
+                    && NOT ISBLANK ( 'job_postings_fact'[job_title_short] )
+            ),
+            'job_postings_fact'[job_title_short],
+            "Avg Salary", AVERAGE ( 'job_postings_fact'[salary_year_avg] )
+        ),
+        [Avg Salary], DESC,
+        'job_postings_fact'[job_title_short], ASC
+    )
+RETURN
+    CONCATENATEX ( _roleSalaryTable, 'job_postings_fact'[job_title_short], ", " )
+
+Top Skill By Demand =
+VAR _skillTable =
+    TOPN (
+        1,
+        SUMMARIZE (
+            FILTER ( 'skills_dim', NOT ISBLANK ( 'skills_dim'[skills] ) ),
+            'skills_dim'[skills],
+            "Job Count", CALCULATE ( DISTINCTCOUNT ( 'skills_job_dim'[job_id] ) )
+        ),
+        [Job Count], DESC,
+        'skills_dim'[skills], ASC
+    )
+RETURN
+    CONCATENATEX ( _skillTable, 'skills_dim'[skills], ", " )
+
+Landing Page Subtitle =
+VAR _fromDate = [Earliest Posted Date]
+VAR _toDate = [Latest Posted Date]
+RETURN
+    FORMAT ( [Total Job Postings], "#,0" )
+        & " jobs across "
+        & FORMAT ( [Hiring Companies], "#,0" )
+        & " companies in "
+        & FORMAT ( [Hiring Countries], "#,0" )
+        & " countries | "
+        & FORMAT ( _fromDate, "dd MMM yyyy" )
+        & " to "
+        & FORMAT ( _toDate, "dd MMM yyyy" )
